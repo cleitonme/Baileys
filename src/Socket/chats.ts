@@ -7,6 +7,7 @@ import { makeMutex } from '../Utils/make-mutex'
 import processMessage from '../Utils/process-message'
 import { BinaryNode, getBinaryNodeChild, getBinaryNodeChildren, jidNormalizedUser, reduceBinaryNodeToDictionary, S_WHATSAPP_NET } from '../WABinary'
 import { makeSocket } from './socket'
+import { Label, LabelActionBody } from '../Types/Label'
 
 const MAX_SYNC_ATTEMPTS = 2
 
@@ -727,9 +728,9 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			},
 			content: [
 				{ tag: 'props', attrs: {
-					protocol: '2',
-					hash: authState?.creds?.lastPropHash || ''
-				} }
+						protocol: '2',
+						hash: authState?.creds?.lastPropHash || ''
+					} }
 			]
 		})
 
@@ -752,7 +753,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 	 * modify a chat -- mark unread, read etc.
 	 * lastMessages must be sorted in reverse chronologically
 	 * requires the last messages till the last message received; required for archive & unread
-	*/
+	 */
 	const chatModify = (mod: ChatModification, jid: string) => {
 		const patch = chatModificationToAppPatch(mod, jid)
 		return appPatch(patch)
@@ -766,6 +767,17 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			star: {
 				messages,
 				star
+			}
+		}, jid)
+	}
+
+	/**
+	 * Adds label
+	 */
+	const addLabel = (jid: string, labels: LabelActionBody) => {
+		return chatModify({
+			addLabel: {
+				...labels
 			}
 		}, jid)
 	}
@@ -913,24 +925,24 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		const { attrs } = getBinaryNodeChild(node, 'dirty')!
 		const type = attrs.type
 		switch (type) {
-		case 'account_sync':
-			if(attrs.timestamp) {
-				let { lastAccountSyncTimestamp } = authState.creds
-				if(lastAccountSyncTimestamp) {
-					await cleanDirtyBits('account_sync', lastAccountSyncTimestamp)
+			case 'account_sync':
+				if(attrs.timestamp) {
+					let { lastAccountSyncTimestamp } = authState.creds
+					if(lastAccountSyncTimestamp) {
+						await cleanDirtyBits('account_sync', lastAccountSyncTimestamp)
+					}
+
+					lastAccountSyncTimestamp = +attrs.timestamp
+					ev.emit('creds.update', { lastAccountSyncTimestamp })
 				}
 
-				lastAccountSyncTimestamp = +attrs.timestamp
-				ev.emit('creds.update', { lastAccountSyncTimestamp })
-			}
-
-			break
-		case 'groups':
-			// handled in groups.ts
-			break
-		default:
-			logger.info({ node }, 'received unknown sync')
-			break
+				break
+			case 'groups':
+				// handled in groups.ts
+				break
+			default:
+				logger.info({ node }, 'received unknown sync')
+				break
 		}
 	})
 
@@ -988,6 +1000,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		resyncAppState,
 		chatModify,
 		cleanDirtyBits,
+		addLabel,
 		addChatLabel,
 		removeChatLabel,
 		addMessageLabel,

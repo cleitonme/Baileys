@@ -29,12 +29,12 @@ const generateMac = (operation: proto.SyncdMutation.SyncdOperation, data: Buffer
 	const getKeyData = () => {
 		let r: number
 		switch (operation) {
-		case proto.SyncdMutation.SyncdOperation.SET:
-			r = 0x01
-			break
-		case proto.SyncdMutation.SyncdOperation.REMOVE:
-			r = 0x02
-			break
+			case proto.SyncdMutation.SyncdOperation.SET:
+				r = 0x01
+				break
+			case proto.SyncdMutation.SyncdOperation.REMOVE:
+				r = 0x02
+				break
 		}
 
 		const buff = Buffer.from([r])
@@ -620,6 +620,21 @@ export const chatModificationToAppPatch = (
 			apiVersion: 1,
 			operation: OP.SET,
 		}
+	} else if('addLabel' in mod) {
+		patch = {
+			syncAction: {
+				labelEditAction: {
+					name: mod.addLabel.name,
+					color: mod.addLabel.color,
+					predefinedId : mod.addLabel.predefinedId,
+					deleted: mod.addLabel.deleted
+				}
+			},
+			index: ['label_edit', mod.addLabel.id],
+			type: 'regular',
+			apiVersion: 3,
+			operation: OP.SET,
+		}
 	} else if('addChatLabel' in mod) {
 		patch = {
 			syncAction: {
@@ -853,8 +868,8 @@ export const processSyncAction = (
 	}
 
 	function isValidPatchBasedOnMessageRange(chat: Chat, msgRange: proto.SyncActionValue.ISyncActionMessageRange | null | undefined) {
-		  const lastMsgTimestamp = Number(msgRange?.lastMessageTimestamp || msgRange?.lastSystemMessageTimestamp || 0)
-		  const chatLastMsgTimestamp = Number(chat?.lastMessageRecvTimestamp || 0)
-		  return lastMsgTimestamp >= chatLastMsgTimestamp
+		const lastMsgTimestamp = Number(msgRange?.lastMessageTimestamp || msgRange?.lastSystemMessageTimestamp || 0)
+		const chatLastMsgTimestamp = Number(chat?.lastMessageRecvTimestamp || 0)
+		return lastMsgTimestamp >= chatLastMsgTimestamp
 	}
 }
