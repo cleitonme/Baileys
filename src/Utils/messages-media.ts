@@ -1,5 +1,5 @@
 import { Boom } from '@hapi/boom'
-import { AxiosRequestConfig } from 'axios'
+import axios, { AxiosRequestConfig } from 'axios'
 import { exec } from 'child_process'
 import * as Crypto from 'crypto'
 import { once } from 'events'
@@ -80,14 +80,14 @@ const extractVideoThumb = async(
 	time: string,
 	size: { width: number, height: number },
 ) => new Promise((resolve, reject) => {
-    	const cmd = `ffmpeg -ss ${time} -i ${path} -y -vf scale=${size.width}:-1 -vframes 1 -f image2 ${destPath}`
-    	exec(cmd, (err) => {
-    		if(err) {
+	const cmd = `ffmpeg -ss ${time} -i ${path} -y -vf scale=${size.width}:-1 -vframes 1 -f image2 ${destPath}`
+	exec(cmd, (err) => {
+		if(err) {
 			reject(err)
 		} else {
 			resolve()
 		}
-    	})
+	})
 }) as Promise<void>
 
 export const extractImageThumb = async(bufferOrFilePath: Readable | Buffer | string, width = 32) => {
@@ -205,7 +205,7 @@ export async function getAudioDuration(buffer: Buffer | string | Readable) {
 }
 
 /**
-  referenced from and modifying https://github.com/wppconnect-team/wa-js/blob/main/src/chat/functions/prepareAudioWaveform.ts
+ referenced from and modifying https://github.com/wppconnect-team/wa-js/blob/main/src/chat/functions/prepareAudioWaveform.ts
  */
 export async function getAudioWaveform(buffer: Buffer | string | Readable, logger?: Logger) {
 	try {
@@ -227,9 +227,9 @@ export async function getAudioWaveform(buffer: Buffer | string | Readable, logge
 		const blockSize = Math.floor(rawData.length / samples) // the number of samples in each subdivision
 		const filteredData: number[] = []
 		for(let i = 0; i < samples; i++) {
-		  	const blockStart = blockSize * i // the location of the first sample in the block
-		  	let sum = 0
-		  	for(let j = 0; j < blockSize; j++) {
+			const blockStart = blockSize * i // the location of the first sample in the block
+			let sum = 0
+			for(let j = 0; j < blockSize; j++) {
 				sum = sum + Math.abs(rawData[blockStart + j]) // find the sum of all the samples in the block
 			}
 
@@ -290,8 +290,8 @@ export async function generateThumbnail(
 	file: string,
 	mediaType: 'video' | 'image',
 	options: {
-        logger?: Logger
-    }
+		logger?: Logger
+	}
 ) {
 	let thumbnail: string | undefined
 	let originalImageDimensions: { width: number, height: number } | undefined
@@ -324,7 +324,6 @@ export async function generateThumbnail(
 }
 
 export const getHttpStream = async(url: string | URL, options: AxiosRequestConfig & { isStream?: true } = {}) => {
-	const { default: axios } = await import('axios')
 	const fetched = await axios.get(url.toString(), { ...options, responseType: 'stream' })
 	return fetched.data as Readable
 }
@@ -454,8 +453,8 @@ const toSmallestChunkSize = (num: number) => {
 }
 
 export type MediaDownloadOptions = {
-    startByte?: number
-    endByte?: number
+	startByte?: number
+	endByte?: number
 	options?: AxiosRequestConfig<any>
 }
 
@@ -602,35 +601,25 @@ export const getWAUploadToServer = (
 	refreshMediaConn: (force: boolean) => Promise<MediaConnInfo>,
 ): WAMediaUploadFunction => {
 	return async(stream, { mediaType, fileEncSha256B64, timeoutMs }) => {
-		const { default: axios } = await import('axios')
 		// send a query JSON to obtain the url & auth token to upload our media
 		let uploadInfo = await refreshMediaConn(false)
 
 		let urls: { mediaUrl: string, directPath: string } | undefined
 		const hosts = [ ...customUploadHosts, ...uploadInfo.hosts ]
 
-		const chunks: Buffer[] = []
-		for await (const chunk of stream) {
-			chunks.push(chunk)
-		}
-
-		const reqBody = Buffer.concat(chunks)
 		fileEncSha256B64 = encodeBase64EncodedStringForUpload(fileEncSha256B64)
 
-		for(const { hostname, maxContentLengthBytes } of hosts) {
+		for(const { hostname } of hosts) {
 			logger.debug(`uploading to "${hostname}"`)
 
 			const auth = encodeURIComponent(uploadInfo.auth) // the auth token
 			const url = `https://${hostname}${MEDIA_PATH_MAP[mediaType]}/${fileEncSha256B64}?auth=${auth}&token=${fileEncSha256B64}`
 			let result: any
 			try {
-				if(maxContentLengthBytes && reqBody.length > maxContentLengthBytes) {
-					throw new Boom(`Body too large for "${hostname}"`, { statusCode: 413 })
-				}
 
 				const body = await axios.post(
 					url,
-					reqBody,
+					stream,
 					{
 						...options,
 						headers: {
