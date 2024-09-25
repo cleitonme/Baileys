@@ -537,7 +537,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	) => {
 		const msgs = await Promise.all(ids.map(id => getMessage({ ...key, id })))
 		const remoteJid = key.remoteJid!
-		const participant = key.participant || '';
+		const participant = key.participant || remoteJid
 		// if it's the primary jid sending the request
 		// just re-send the message to everyone
 		// prevents the first message decryption failure
@@ -561,8 +561,9 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				if(!key.participant) {
 					msgRelayOpts.useUserDevicesCache = false
 				} else {
+					msgRelayOpts.useUserDevicesCache = false
 					msgRelayOpts.participant = {
-						jid: participant,
+						jid: key.participant,
 						count: +retryNode.attrs.count
 					}
 				}
@@ -636,20 +637,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 									}))
 								)
 							}
-						}
-						else if (attrs.type === 'participants') {
-							ev.emit(
-								'messages.update',
-								ids.map(id => ({
-									key: { ...key, id },
-									//update: { delivered: 'delivered', participants: attrs.content } // Adicionando participants diretamente
-									update: { status }
-								}))
-							);
-						}
-
-
-						
+						}						
 						 else {
 							ev.emit(
 								'messages.update',
@@ -660,6 +648,17 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 							)
 						}
 					}
+					if (attrs.type === 'participants') {
+							ev.emit(
+								'messages.update',
+								ids.map(id => ({
+									key: { ...key, id },
+									userJid: jidNormalizedUser(attrs.participant),
+									//update: { delivered: 'delivered', participants: attrs.content } // Adicionando participants diretamente
+									update: { status }
+								}))
+							);
+						}
 					
 
 
@@ -775,14 +774,11 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
                 await retryMutex.mutex(async () => {
                     if (ws.isOpen) {
 						 const msgId = msg.key.id!;
-						 const jid = jidNormalizedUser(msg.key.remoteJid!);
-												
-
-							
-							logger.error('Forçando a a criação de novas keys')
+						 const jid = jidNormalizedUser(msg.key.remoteJid!);				
 							
 							
-							logger.error('Seção recriada')
+							
+							
 							//logger.error('Forçando a reconexão com o socket')
 							//const error = new Error('Connection closed');
 							//(error as any).output = { statusCode: 408 }; // Adiciona o código 408
@@ -832,14 +828,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
                 await retryMutex.mutex(async () => {
 						if (ws.isOpen) {
 						 const msgId = msg.key.id!;
-						 const jid = jidNormalizedUser(msg.key.remoteJid!);
-						 
-
-							
-							logger.error('Forçando a a criação de novas keys')
-							
-							await delay(1500);
-							logger.error('Forçando a reconexão com o socket')
+						 const jid = jidNormalizedUser(msg.key.remoteJid!);						 
 							
 							 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);                
 						   	 const isAnyHistoryMsg = getHistoryMsg(msg.message!);
