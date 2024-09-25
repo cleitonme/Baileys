@@ -191,289 +191,292 @@ function append<E extends BufferableEvent>(
 	logger: Logger
 ) {
 	switch (event) {
-	case 'messaging-history.set':
-		for(const chat of eventData.chats as Chat[]) {
-			const existingChat = data.historySets.chats[chat.id]
-			if(existingChat) {
-				existingChat.endOfHistoryTransferType = chat.endOfHistoryTransferType
-			}
-
-			if(!existingChat && !historyCache.has(chat.id)) {
-				data.historySets.chats[chat.id] = chat
-				historyCache.add(chat.id)
-
-				absorbingChatUpdate(chat)
-			}
-		}
-
-		for(const contact of eventData.contacts as Contact[]) {
-			const existingContact = data.historySets.contacts[contact.id]
-			if(existingContact) {
-				Object.assign(existingContact, trimUndefined(contact))
-			} else {
-				const historyContactId = `c:${contact.id}`
-				const hasAnyName = contact.notify || contact.name || contact.verifiedName
-				if(!historyCache.has(historyContactId) || hasAnyName) {
-					data.historySets.contacts[contact.id] = contact
-					historyCache.add(historyContactId)
+		case 'messaging-history.set':
+			for(const chat of eventData.chats as Chat[]) {
+				const existingChat = data.historySets.chats[chat.id]
+				if(existingChat) {
+					existingChat.endOfHistoryTransferType = chat.endOfHistoryTransferType
 				}
-			}
-		}
 
-		for(const message of eventData.messages as WAMessage[]) {
-			const key = stringifyMessageKey(message.key)
-			const existingMsg = data.historySets.messages[key]
-			if(!existingMsg && !historyCache.has(key)) {
-				data.historySets.messages[key] = message
-				historyCache.add(key)
-			}
-		}
+				if(!existingChat && !historyCache.has(chat.id)) {
+					data.historySets.chats[chat.id] = chat
+					historyCache.add(chat.id)
 
-		data.historySets.empty = false
-		data.historySets.isLatest = eventData.isLatest || data.historySets.isLatest
-
-		break
-	case 'chats.upsert':
-		for(const chat of eventData as Chat[]) {
-			let upsert = data.chatUpserts[chat.id]
-			if(!upsert) {
-				upsert = data.historySets[chat.id]
-				if(upsert) {
-					logger.debug({ chatId: chat.id }, 'absorbed chat upsert in chat set')
+					absorbingChatUpdate(chat)
 				}
 			}
 
-			if(upsert) {
-				upsert = concatChats(upsert, chat)
-			} else {
-				upsert = chat
-				data.chatUpserts[chat.id] = upsert
-			}
-
-			absorbingChatUpdate(upsert)
-
-			if(data.chatDeletes.has(chat.id)) {
-				data.chatDeletes.delete(chat.id)
-			}
-		}
-
-		break
-	case 'chats.update':
-		for(const update of eventData as ChatUpdate[]) {
-			const chatId = update.id!
-			const conditionMatches = update.conditional ? update.conditional(data) : true
-			if(conditionMatches) {
-				delete update.conditional
-
-				// if there is an existing upsert, merge the update into it
-				const upsert = data.historySets.chats[chatId] || data.chatUpserts[chatId]
-				if(upsert) {
-					concatChats(upsert, update)
+			for(const contact of eventData.contacts as Contact[]) {
+				const existingContact = data.historySets.contacts[contact.id]
+				if(existingContact) {
+					Object.assign(existingContact, trimUndefined(contact))
 				} else {
-					// merge the update into the existing update
-					const chatUpdate = data.chatUpdates[chatId] || { }
-					data.chatUpdates[chatId] = concatChats(chatUpdate, update)
+					const historyContactId = `c:${contact.id}`
+					const hasAnyName = contact.notify || contact.name || contact.verifiedName
+					if(!historyCache.has(historyContactId) || hasAnyName) {
+						data.historySets.contacts[contact.id] = contact
+						historyCache.add(historyContactId)
+					}
 				}
-			} else if(conditionMatches === undefined) {
-				// condition yet to be fulfilled
-				data.chatUpdates[chatId] = update
-			}
-			// otherwise -- condition not met, update is invalid
-
-			// if the chat has been updated
-			// ignore any existing chat delete
-			if(data.chatDeletes.has(chatId)) {
-				data.chatDeletes.delete(chatId)
-			}
-		}
-
-		break
-	case 'chats.delete':
-		for(const chatId of eventData as string[]) {
-			if(!data.chatDeletes.has(chatId)) {
-				data.chatDeletes.add(chatId)
 			}
 
-			// remove any prior updates & upserts
-			if(data.chatUpdates[chatId]) {
-				delete data.chatUpdates[chatId]
+			for(const message of eventData.messages as WAMessage[]) {
+				const key = stringifyMessageKey(message.key)
+				const existingMsg = data.historySets.messages[key]
+				if(!existingMsg && !historyCache.has(key)) {
+					data.historySets.messages[key] = message
+					historyCache.add(key)
+				}
 			}
 
-			if(data.chatUpserts[chatId]) {
-				delete data.chatUpserts[chatId]
+			data.historySets.empty = false
+			data.historySets.syncType = eventData.syncType
+			data.historySets.progress = eventData.progress
+			data.historySets.peerDataRequestSessionId = eventData.peerDataRequestSessionId
+			data.historySets.isLatest = eventData.isLatest || data.historySets.isLatest
 
-			}
+			break
+		case 'chats.upsert':
+			for(const chat of eventData as Chat[]) {
+				let upsert = data.chatUpserts[chat.id]
+				if(!upsert) {
+					upsert = data.historySets[chat.id]
+					if(upsert) {
+						logger.debug({ chatId: chat.id }, 'absorbed chat upsert in chat set')
+					}
+				}
 
-			if(data.historySets.chats[chatId]) {
-				delete data.historySets.chats[chatId]
-			}
-		}
-
-		break
-	case 'contacts.upsert':
-		for(const contact of eventData as Contact[]) {
-			let upsert = data.contactUpserts[contact.id]
-			if(!upsert) {
-				upsert = data.historySets.contacts[contact.id]
 				if(upsert) {
-					logger.debug({ contactId: contact.id }, 'absorbed contact upsert in contact set')
+					upsert = concatChats(upsert, chat)
+				} else {
+					upsert = chat
+					data.chatUpserts[chat.id] = upsert
+				}
+
+				absorbingChatUpdate(upsert)
+
+				if(data.chatDeletes.has(chat.id)) {
+					data.chatDeletes.delete(chat.id)
 				}
 			}
 
-			if(upsert) {
-				upsert = Object.assign(upsert, trimUndefined(contact))
-			} else {
-				upsert = contact
-				data.contactUpserts[contact.id] = upsert
+			break
+		case 'chats.update':
+			for(const update of eventData as ChatUpdate[]) {
+				const chatId = update.id!
+				const conditionMatches = update.conditional ? update.conditional(data) : true
+				if(conditionMatches) {
+					delete update.conditional
+
+					// if there is an existing upsert, merge the update into it
+					const upsert = data.historySets.chats[chatId] || data.chatUpserts[chatId]
+					if(upsert) {
+						concatChats(upsert, update)
+					} else {
+						// merge the update into the existing update
+						const chatUpdate = data.chatUpdates[chatId] || { }
+						data.chatUpdates[chatId] = concatChats(chatUpdate, update)
+					}
+				} else if(conditionMatches === undefined) {
+					// condition yet to be fulfilled
+					data.chatUpdates[chatId] = update
+				}
+				// otherwise -- condition not met, update is invalid
+
+				// if the chat has been updated
+				// ignore any existing chat delete
+				if(data.chatDeletes.has(chatId)) {
+					data.chatDeletes.delete(chatId)
+				}
 			}
 
-			if(data.contactUpdates[contact.id]) {
-				upsert = Object.assign(data.contactUpdates[contact.id], trimUndefined(contact))
-				delete data.contactUpdates[contact.id]
-			}
-		}
+			break
+		case 'chats.delete':
+			for(const chatId of eventData as string[]) {
+				if(!data.chatDeletes.has(chatId)) {
+					data.chatDeletes.add(chatId)
+				}
 
-		break
-	case 'contacts.update':
-		const contactUpdates = eventData as BaileysEventMap['contacts.update']
-		for(const update of contactUpdates) {
-			const id = update.id!
-			// merge into prior upsert
-			const upsert = data.historySets.contacts[id] || data.contactUpserts[id]
-			if(upsert) {
-				Object.assign(upsert, update)
-			} else {
-				// merge into prior update
-				const contactUpdate = data.contactUpdates[id] || { }
-				data.contactUpdates[id] = Object.assign(contactUpdate, update)
-			}
-		}
+				// remove any prior updates & upserts
+				if(data.chatUpdates[chatId]) {
+					delete data.chatUpdates[chatId]
+				}
 
-		break
-	case 'messages.upsert':
-		const { messages, type } = eventData as BaileysEventMap['messages.upsert']
-		for(const message of messages) {
-			const key = stringifyMessageKey(message.key)
-			let existing = data.messageUpserts[key]?.message
-			if(!existing) {
-				existing = data.historySets.messages[key]
+				if(data.chatUpserts[chatId]) {
+					delete data.chatUpserts[chatId]
+
+				}
+
+				if(data.historySets.chats[chatId]) {
+					delete data.historySets.chats[chatId]
+				}
+			}
+
+			break
+		case 'contacts.upsert':
+			for(const contact of eventData as Contact[]) {
+				let upsert = data.contactUpserts[contact.id]
+				if(!upsert) {
+					upsert = data.historySets.contacts[contact.id]
+					if(upsert) {
+						logger.debug({ contactId: contact.id }, 'absorbed contact upsert in contact set')
+					}
+				}
+
+				if(upsert) {
+					upsert = Object.assign(upsert, trimUndefined(contact))
+				} else {
+					upsert = contact
+					data.contactUpserts[contact.id] = upsert
+				}
+
+				if(data.contactUpdates[contact.id]) {
+					upsert = Object.assign(data.contactUpdates[contact.id], trimUndefined(contact))
+					delete data.contactUpdates[contact.id]
+				}
+			}
+
+			break
+		case 'contacts.update':
+			const contactUpdates = eventData as BaileysEventMap['contacts.update']
+			for(const update of contactUpdates) {
+				const id = update.id!
+				// merge into prior upsert
+				const upsert = data.historySets.contacts[id] || data.contactUpserts[id]
+				if(upsert) {
+					Object.assign(upsert, update)
+				} else {
+					// merge into prior update
+					const contactUpdate = data.contactUpdates[id] || { }
+					data.contactUpdates[id] = Object.assign(contactUpdate, update)
+				}
+			}
+
+			break
+		case 'messages.upsert':
+			const { messages, type } = eventData as BaileysEventMap['messages.upsert']
+			for(const message of messages) {
+				const key = stringifyMessageKey(message.key)
+				let existing = data.messageUpserts[key]?.message
+				if(!existing) {
+					existing = data.historySets.messages[key]
+					if(existing) {
+						logger.debug({ messageId: key }, 'absorbed message upsert in message set')
+					}
+				}
+
 				if(existing) {
-					logger.debug({ messageId: key }, 'absorbed message upsert in message set')
+					message.messageTimestamp = existing.messageTimestamp
+				}
+
+				if(data.messageUpdates[key]) {
+					logger.debug('absorbed prior message update in message upsert')
+					Object.assign(message, data.messageUpdates[key].update)
+					delete data.messageUpdates[key]
+				}
+
+				if(data.historySets.messages[key]) {
+					data.historySets.messages[key] = message
+				} else {
+					data.messageUpserts[key] = {
+						message,
+						type: type === 'notify' || data.messageUpserts[key]?.type === 'notify'
+							? 'notify'
+							: type
+					}
 				}
 			}
 
-			if(existing) {
-				message.messageTimestamp = existing.messageTimestamp
-			}
-
-			if(data.messageUpdates[key]) {
-				logger.debug('absorbed prior message update in message upsert')
-				Object.assign(message, data.messageUpdates[key].update)
-				delete data.messageUpdates[key]
-			}
-
-			if(data.historySets.messages[key]) {
-				data.historySets.messages[key] = message
-			} else {
-				data.messageUpserts[key] = {
-					message,
-					type: type === 'notify' || data.messageUpserts[key]?.type === 'notify'
-						? 'notify'
-						: type
-				}
-			}
-		}
-
-		break
-	case 'messages.update':
-		const msgUpdates = eventData as BaileysEventMap['messages.update']
-		for(const { key, update } of msgUpdates) {
-			const keyStr = stringifyMessageKey(key)
-			const existing = data.historySets.messages[keyStr] || data.messageUpserts[keyStr]?.message
-			if(existing) {
-				Object.assign(existing, update)
-				// if the message was received & read by us
-				// the chat counter must have been incremented
-				// so we need to decrement it
-				if(update.status === WAMessageStatus.READ && !key.fromMe) {
-					decrementChatReadCounterIfMsgDidUnread(existing)
-				}
-			} else {
-				const msgUpdate = data.messageUpdates[keyStr] || { key, update: { } }
-				Object.assign(msgUpdate.update, update)
-				data.messageUpdates[keyStr] = msgUpdate
-			}
-		}
-
-		break
-	case 'messages.delete':
-		const deleteData = eventData as BaileysEventMap['messages.delete']
-		if('keys' in deleteData) {
-			const { keys } = deleteData
-			for(const key of keys) {
+			break
+		case 'messages.update':
+			const msgUpdates = eventData as BaileysEventMap['messages.update']
+			for(const { key, update } of msgUpdates) {
 				const keyStr = stringifyMessageKey(key)
-				if(!data.messageDeletes[keyStr]) {
-					data.messageDeletes[keyStr] = key
-
-				}
-
-				if(data.messageUpserts[keyStr]) {
-					delete data.messageUpserts[keyStr]
-				}
-
-				if(data.messageUpdates[keyStr]) {
-					delete data.messageUpdates[keyStr]
+				const existing = data.historySets.messages[keyStr] || data.messageUpserts[keyStr]?.message
+				if(existing) {
+					Object.assign(existing, update)
+					// if the message was received & read by us
+					// the chat counter must have been incremented
+					// so we need to decrement it
+					if(update.status === WAMessageStatus.READ && !key.fromMe) {
+						decrementChatReadCounterIfMsgDidUnread(existing)
+					}
+				} else {
+					const msgUpdate = data.messageUpdates[keyStr] || { key, update: { } }
+					Object.assign(msgUpdate.update, update)
+					data.messageUpdates[keyStr] = msgUpdate
 				}
 			}
-		} else {
-			// TODO: add support
-		}
 
-		break
-	case 'messages.reaction':
-		const reactions = eventData as BaileysEventMap['messages.reaction']
-		for(const { key, reaction } of reactions) {
-			const keyStr = stringifyMessageKey(key)
-			const existing = data.messageUpserts[keyStr]
-			if(existing) {
-				updateMessageWithReaction(existing.message, reaction)
+			break
+		case 'messages.delete':
+			const deleteData = eventData as BaileysEventMap['messages.delete']
+			if('keys' in deleteData) {
+				const { keys } = deleteData
+				for(const key of keys) {
+					const keyStr = stringifyMessageKey(key)
+					if(!data.messageDeletes[keyStr]) {
+						data.messageDeletes[keyStr] = key
+
+					}
+
+					if(data.messageUpserts[keyStr]) {
+						delete data.messageUpserts[keyStr]
+					}
+
+					if(data.messageUpdates[keyStr]) {
+						delete data.messageUpdates[keyStr]
+					}
+				}
 			} else {
-				data.messageReactions[keyStr] = data.messageReactions[keyStr]
-					|| { key, reactions: [] }
-				updateMessageWithReaction(data.messageReactions[keyStr], reaction)
+				// TODO: add support
 			}
-		}
 
-		break
-	case 'message-receipt.update':
-		const receipts = eventData as BaileysEventMap['message-receipt.update']
-		for(const { key, receipt } of receipts) {
-			const keyStr = stringifyMessageKey(key)
-			const existing = data.messageUpserts[keyStr]
-			if(existing) {
-				updateMessageWithReceipt(existing.message, receipt)
-			} else {
-				data.messageReceipts[keyStr] = data.messageReceipts[keyStr]
-					|| { key, userReceipt: [] }
-				updateMessageWithReceipt(data.messageReceipts[keyStr], receipt)
+			break
+		case 'messages.reaction':
+			const reactions = eventData as BaileysEventMap['messages.reaction']
+			for(const { key, reaction } of reactions) {
+				const keyStr = stringifyMessageKey(key)
+				const existing = data.messageUpserts[keyStr]
+				if(existing) {
+					updateMessageWithReaction(existing.message, reaction)
+				} else {
+					data.messageReactions[keyStr] = data.messageReactions[keyStr]
+						|| { key, reactions: [] }
+					updateMessageWithReaction(data.messageReactions[keyStr], reaction)
+				}
 			}
-		}
 
-		break
-	case 'groups.update':
-		const groupUpdates = eventData as BaileysEventMap['groups.update']
-		for(const update of groupUpdates) {
-			const id = update.id!
-			const groupUpdate = data.groupUpdates[id] || { }
-			if(!data.groupUpdates[id]) {
-				data.groupUpdates[id] = Object.assign(groupUpdate, update)
-
+			break
+		case 'message-receipt.update':
+			const receipts = eventData as BaileysEventMap['message-receipt.update']
+			for(const { key, receipt } of receipts) {
+				const keyStr = stringifyMessageKey(key)
+				const existing = data.messageUpserts[keyStr]
+				if(existing) {
+					updateMessageWithReceipt(existing.message, receipt)
+				} else {
+					data.messageReceipts[keyStr] = data.messageReceipts[keyStr]
+						|| { key, userReceipt: [] }
+					updateMessageWithReceipt(data.messageReceipts[keyStr], receipt)
+				}
 			}
-		}
 
-		break
-	default:
-		throw new Error(`"${event}" cannot be buffered`)
+			break
+		case 'groups.update':
+			const groupUpdates = eventData as BaileysEventMap['groups.update']
+			for(const update of groupUpdates) {
+				const id = update.id!
+				const groupUpdate = data.groupUpdates[id] || { }
+				if(!data.groupUpdates[id]) {
+					data.groupUpdates[id] = Object.assign(groupUpdate, update)
+
+				}
+			}
+
+			break
+		default:
+			throw new Error(`"${event}" cannot be buffered`)
 	}
 
 	function absorbingChatUpdate(existing: Chat) {
@@ -521,7 +524,10 @@ function consolidateEvents(data: BufferedEventData) {
 			chats: Object.values(data.historySets.chats),
 			messages: Object.values(data.historySets.messages),
 			contacts: Object.values(data.historySets.contacts),
-			isLatest: data.historySets.isLatest
+			syncType: data.historySets.syncType,
+			progress: data.historySets.progress,
+			isLatest: data.historySets.isLatest,
+			peerDataRequestSessionId: data.historySets.peerDataRequestSessionId
 		}
 	}
 
