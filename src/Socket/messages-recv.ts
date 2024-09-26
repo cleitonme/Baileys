@@ -776,29 +776,29 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 						 const msgId = msg.key.id!;
 						 const jid = jidNormalizedUser(msg.key.remoteJid!);				
 							
+		
+							if (msg.key.id?.toUpperCase() !== msg.key.id) {
 							
-							
-							
-							//logger.error('Forçando a reconexão com o socket')
-							//const error = new Error('Connection closed');
-							//(error as any).output = { statusCode: 408 }; // Adiciona o código 408
-							// Emite um evento de atualização de conexão com o código de status 408
-							//ev.emit('connection.update', {
-								//connection: 'close',
-								//lastDisconnect: {
-								//error: error, // Passa o erro com statusCode
-								//date: new Date()
-								//}
-							//});
-							//await delay(10000)
-							await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);                
+                            node.attrs.offline!=null;
+                        	sendMessageAck(node);
+                        	await upsertMessage(msg, node.attrs.offline ? "append" : "notify");			
+                        
+							await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
+			                 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], 'sender');			                                  
 						   	 const isAnyHistoryMsg = getHistoryMsg(msg.message!);
 							if (isAnyHistoryMsg) {							
 								await sendReceipt(jid, undefined, [msg.key.id!], "hist_sync");
 							}
-							 await readMessages([msg.key!]);
-							 cleanMessage(msg, authState.creds.me!.id);	
-						 	ev.flush()					
+							await upsertMessage(msg, node.attrs.offline ? "append" : "notify");		
+							 cleanMessage(msg, authState.creds.me!.id);
+							}
+							else
+							{
+								const encNode = getBinaryNodeChild(node, 'enc')
+								await sendRetryRequest(node, !encNode)
+
+							}	
+						 					
 							
 							
 						
@@ -810,7 +810,8 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
                     }
                 });
             } else {
-                // Mensagem entregue com sucesso
+                
+				
                 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
 
                 // Verifica se é uma mensagem de histórico
@@ -819,27 +820,37 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
                     const jid = jidNormalizedUser(msg.key.remoteJid!);
                     await sendReceipt(jid, undefined, [msg.key.id!], "hist_sync");
                 }
-            }
-			
+				 cleanMessage(msg, authState.creds.me!.id);
+            }	
 
-            
-            cleanMessage(msg, authState.creds.me!.id);
+                       
         } catch (error) {
                 await retryMutex.mutex(async () => {
 						if (ws.isOpen) {
 						 const msgId = msg.key.id!;
 						 const jid = jidNormalizedUser(msg.key.remoteJid!);						 
+						if (msg.key.id?.toUpperCase() !== msg.key.id) {
 							
-							 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);                
+                            node.attrs.offline!=null;
+                        	sendMessageAck(node);
+                        	await upsertMessage(msg, node.attrs.offline ? "append" : "notify");			
+                        
+							await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
+			                 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], 'sender');			                                  
 						   	 const isAnyHistoryMsg = getHistoryMsg(msg.message!);
 							if (isAnyHistoryMsg) {							
 								await sendReceipt(jid, undefined, [msg.key.id!], "hist_sync");
 							}
-							 await readMessages([msg.key!]);
-							 cleanMessage(msg, authState.creds.me!.id);							
-							 msgRetryCache.del(msgId)
+							await upsertMessage(msg, node.attrs.offline ? "append" : "notify");		
+							 cleanMessage(msg, authState.creds.me!.id);
+							}
+							else
+							{
+								const encNode = getBinaryNodeChild(node, 'enc')
+								await sendRetryRequest(node, !encNode)
+
+							}	
 							
-							ev.flush()
 									
 
 
