@@ -12,7 +12,7 @@ import { ConnectionState } from './State'
 
 export type BaileysEventMap = {
     /** connection state has been updated -- WS closed, opened, connecting etc. */
-    'connection.update': Partial<ConnectionState>
+	'connection.update': Partial<ConnectionState>
     /** credentials updated -- some metadata, keys or something */
     'creds.update': Partial<AuthenticationCreds>
     /** set chats (history sync), everything is reverse chronologically sorted */
@@ -20,10 +20,7 @@ export type BaileysEventMap = {
         chats: Chat[]
         contacts: Contact[]
         messages: WAMessage[]
-        isLatest?: boolean
-        progress?: number | null
-        syncType?: proto.HistorySync.HistorySyncType
-        peerDataRequestSessionId?: string | null
+        isLatest: boolean
     }
     /** upsert chats */
     'chats.upsert': Chat[]
@@ -44,9 +41,8 @@ export type BaileysEventMap = {
     /**
      * add/update the given messages. If they were received while the connection was online,
      * the update will have type: "notify"
-     * if requestId is provided, then the messages was received from the phone due to it being unavailable
      *  */
-    'messages.upsert': { messages: WAMessage[], type: MessageUpsertType, requestId?: string }
+    'messages.upsert': { messages: WAMessage[], type: MessageUpsertType }
     /** message was reacted to. If reaction was removed -- then "reaction.text" will be falsey */
     'messages.reaction': { key: WAMessageKey, reaction: proto.IReaction }[]
 
@@ -74,9 +70,6 @@ export type BufferedEventData = {
         messages: { [uqId: string]: WAMessage }
         empty: boolean
         isLatest: boolean
-        progress?: number | null
-        syncType?: proto.HistorySync.HistorySyncType
-        peerDataRequestSessionId?: string
     }
     chatUpserts: { [jid: string]: Chat }
     chatUpdates: { [jid: string]: ChatUpdate }
@@ -94,8 +87,8 @@ export type BufferedEventData = {
 export type BaileysEvent = keyof BaileysEventMap
 
 export interface BaileysEventEmitter {
-    on<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
+	on<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
     off<T extends keyof BaileysEventMap>(event: T, listener: (arg: BaileysEventMap[T]) => void): void
     removeAllListeners<T extends keyof BaileysEventMap>(event: T): void
-    emit<T extends keyof BaileysEventMap>(event: T, arg: BaileysEventMap[T]): boolean
+	emit<T extends keyof BaileysEventMap>(event: T, arg: BaileysEventMap[T]): boolean
 }
