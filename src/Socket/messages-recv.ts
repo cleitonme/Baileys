@@ -67,6 +67,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		sendReceipt,
 		uploadPreKeys,
 		readMessages,
+		fetchProps
 	} = sock
 
 	/** this mutex ensures that each retryRequest will wait for the previous one to finish */
@@ -584,7 +585,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 
 		const key: proto.IMessageKey = {
 			remoteJid,
-			id: '',
+			id: attrs.id,
 			fromMe,
 			participant: attrs.participant
 		}
@@ -600,64 +601,82 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		if(Array.isArray(content)) {
 			const items = getBinaryNodeChildren(content[0], 'item')
 			ids.push(...items.map(i => i.attrs.id))
-		}
-		while (!ws.isOpen) {
-			logger.error('Conexão com o socket fechada, aguardando a reconexão para decodificar a mensagem')
 			
-  			await delay(1000)
-			
-			}
+		}	
 
 			
 
 		await Promise.all([
 			processingMutex.mutex(
 				async() => {
-					const status = getStatusFromReceiptType(attrs.type)
-					if(
-						typeof status !== 'undefined' &&
-						(
-							// basically, we only want to know when a message from us has been delivered to/read by the other person
-							// or another device of ours has read some messages
-							status > proto.WebMessageInfo.Status.DELIVERY_ACK ||
-							!isNodeFromMe
-						)
-					) {
-						if(isJidStatusBroadcast(remoteJid)) {
-							if(attrs.participant) {
-								const updateKey: keyof MessageUserReceipt = status === proto.WebMessageInfo.Status.DELIVERY_ACK ? 'receiptTimestamp' : 'readTimestamp'
-								ev.emit(
-									'message-receipt.update',
+					let status;
+					if(attrs.type=='sender')
+					{
+						status =proto.WebMessageInfo.Status.PENDING;
+					}
+					else if(attrs.type==='read')
+					{
+						status = proto.WebMessageInfo.Status.READ;
+					}
+					else if(attrs.type==='played')
+					{
+						status =proto.WebMessageInfo.Status.PLAYED;
+					}
+					else if(attrs.type==='error')
+					{
+						status =proto.WebMessageInfo.Status.ERROR;
+					}
+					else
+					{
+						status =proto.WebMessageInfo.Status.SERVER_ACK;
+					}
+					
+					
+					
+					if(typeof status !== 'undefined') {
+							if(isJidGroup(remoteJid) || isJidStatusBroadcast(remoteJid)) {
+								if(attrs.participant) {
+									const updateKey: keyof MessageUserReceipt = status === proto.WebMessageInfo.Status.DELIVERY_ACK ? 'receiptTimestamp' : 'readTimestamp'
+									ev.emit(
+										'message-receipt.update',
+										ids.map(id => ({
+											key: { ...key, id },
+											receipt: {
+												userJid: jidNormalizedUser(attrs.participant),
+												[updateKey]: +attrs.t
+											}
+										}))
+									)
+									ev.emit(
+									'messages.update',
 									ids.map(id => ({
 										key: { ...key, id },
-										receipt: {
-											userJid: jidNormalizedUser(attrs.participant),
-											[updateKey]: +attrs.t
-										}
+										update: { status }
+									}))
+								)
+								}
+							} else {
+								ev.emit(
+									'messages.update',
+									ids.map(id => ({
+										key: { ...key, id },
+										update: { status }
 									}))
 								)
 							}
-						}						
-						 else {
-							ev.emit(
-								'messages.update',
-								ids.map(id => ({
-									key: { ...key, id },
-									update: { status }
-								}))
-							)
 						}
-					}
+
 					if (attrs.type === 'participants') {
 							ev.emit(
-								'messages.update',
-								ids.map(id => ({
-									key: { ...key, id },
-									userJid: jidNormalizedUser(attrs.participant),
-									//update: { delivered: 'delivered', participants: attrs.content } // Adicionando participants diretamente
-									update: { status }
-								}))
-							);
+										'message-receipt.update',
+										ids.map(id => ({
+											key: { ...key, id },
+											receipt: {
+												userJid: jidNormalizedUser(attrs.participant)
+												
+											}
+										}))
+									)
 						}
 					
 
@@ -759,43 +778,47 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
         } else if (!sendActiveReceipts) {
             type = "inactive";
         }
+		const msgId = msg.key.id!;
+		const jid = jidNormalizedUser(msg.key.remoteJid!);
+		const hasLowercaseOrHyphen = (msgId!.toUpperCase() !== msgId) || msgId!.includes('-'); 
+		if(hasLowercaseOrHyphen)
+		{
+			await fetchProps();
+		}
 
         try {
 					
-			
+		
 			 await decrypt();
 
             // Verifica se a mensagem falhou ao descriptografar
             if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
                 await retryMutex.mutex(async () => {
                     if (ws.isOpen) {
-							const msgId = msg.key.id!;
-							const jid = jidNormalizedUser(msg.key.remoteJid!);                                         				
-                        	await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
+							 if (hasLowercaseOrHyphen) {
+				             msg.messageStubType = 1;										 
+                        	 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
 			                 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], 'sender');			                                  
 						   	 const isAnyHistoryMsg = getHistoryMsg(msg.message!);
 							if (isAnyHistoryMsg) {							
 								await sendReceipt(jid, undefined, [msg.key.id!], "hist_sync");
-							}
-							
+								}							
 							 cleanMessage(msg, authState.creds.me!.id);
 							
-							if (msg.key.id?.toUpperCase() !== msg.key.id) {
-								const encNode = getBinaryNodeChild(node, 'enc')
-								await sendRetryRequest(node, !encNode)
-
-							}
+							 }							
 							else
 							{
-								await resyncAppState(['regular'], false);
-							}	
+								const encNode = getBinaryNodeChild(node, 'enc')
+								await sendRetryRequest(node, !encNode)
+								
+							}
+			 			
 
                     } else {
                         logger.error({ node }, "A conexão está fechada durante a tentativa de recuperação");
                     }
                 });
-            } else {
-                
+            } else {                
 				
                 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
 
@@ -806,29 +829,36 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
                     await sendReceipt(jid, undefined, [msg.key.id!], "hist_sync");
                 }
 				 cleanMessage(msg, authState.creds.me!.id);
+				
             }	
 
                        
         } catch (error) {
                 await retryMutex.mutex(async () => {
 						if (ws.isOpen) {
-						 const msgId = msg.key.id!;
-						 const jid = jidNormalizedUser(msg.key.remoteJid!);
-							await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
+						 	
+							if (hasLowercaseOrHyphen) {
+				             msg.messageStubType = 1;
+                        	 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type);
 			                 await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], 'sender');			                                  
 						   	 const isAnyHistoryMsg = getHistoryMsg(msg.message!);
 							if (isAnyHistoryMsg) {							
 								await sendReceipt(jid, undefined, [msg.key.id!], "hist_sync");
-							}
+								}
 							
-							 cleanMessage(msg, authState.creds.me!.id);
+							 cleanMessage(msg, authState.creds.me!.id);	
 							
-							if (msg.key.id?.toUpperCase() !== msg.key.id) {
+							 await fetchProps()
+							 }
+
+
+							
+							else
+							{
 								const encNode = getBinaryNodeChild(node, 'enc')
 								await sendRetryRequest(node, !encNode)
-
+								
 							}
-
                     } else {
                         logger.error({ node }, "A conexão está fechada durante a tentativa de recuperação");
                     }
@@ -952,6 +982,12 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	})
 
 	ws.on('CB:receipt', node => {
+		const msgId = node.attrs.id!;
+		const hasLowercaseOrHyphen = (msgId!.toUpperCase() !== msgId) || msgId!.includes('-'); 
+		if(hasLowercaseOrHyphen)
+		{
+			fetchProps();
+		}
 		processNodeWithBuffer(node, 'handling receipt', handleReceipt)
 	})
 

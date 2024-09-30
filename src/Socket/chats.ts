@@ -1005,6 +1005,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		removeChatLabel,
 		addMessageLabel,
 		removeMessageLabel,
-		star
+		star,
+		fetchProps
+		
 	}
 }
