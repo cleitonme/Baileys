@@ -1004,10 +1004,21 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		// we'll retry sending the message here
 		if(attrs.phash) {
 			logger.info({ attrs }, 'received phash in ack, resending message...')
+
+			const cacheKey = `${key.remoteJid}:${key.id}`
+
+			if(msgRetryCache.get<number>(cacheKey) >= maxMsgRetryCount) {
+				logger.warn({ attrs }, 'reached max retry count, not sending message again')
+				return
+			}
+
+			const retryCount = msgRetryCache.get<number>(cacheKey) || 0
+
 			const msg = await getMessage(key)
 			if(msg) {
 			        // aqui está havendo um loop reenviando a mensagem, o whatsapp pode reconhecer como SPAN e dar ban
-				// await relayMessage(key.remoteJid!, msg, { messageId: key.id!, useUserDevicesCache: false })
+				await relayMessage(key.remoteJid!, msg, { messageId: key.id!, useUserDevicesCache: false })
+				msgRetryCache.set(cacheKey, retryCount + 1)
 			} else {
 				logger.warn({ attrs }, 'could not send message again, as it was not found')
 			}
